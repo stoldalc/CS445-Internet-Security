@@ -1,9 +1,18 @@
+"""
+Christian Stoldal
+CS 445 AS01
+"""
+
 import random
+import numpy
 import networkx as nx
 
 
 #Packet marking probability
-pMP = 0
+pMP = 0.2
+
+#the attacker will send packets at a rate of X times the normal packet send rate
+x = 10
 
 
 class router:
@@ -17,6 +26,8 @@ class router:
     Attacker = False
     #If true this router is a victim
     Victim = False
+    #Packet buffer
+    packetBuffer = []
 
     
     def __init__(self,addy):
@@ -34,14 +45,20 @@ class router:
             if packet.distance == 0:
                 packet.end = self.address
             packet.distance += 1
+        return packet
 
 
 
       
-class packet:
+class Packet:
     start = ""
     distance = 0
     end = ""
+
+    def pPrint(self):
+        print("\tPacket start: " + str(self.start))
+        print("\tPacket distance: " + str(self.distance))
+        print("\tPacket end: " + str(self.end))
 
 def addEdges(n):
     fp = open('networkTop.txt','r')
@@ -54,14 +71,67 @@ def addEdges(n):
         edgesListBuffer = edges.split(',')
         edgesList.append(edgesListBuffer)
     
-    for i in range(len(Network)):
+    for i in range(len(n)):
         for j in range(len(edgesList[i])):
-            Network.add_edge(i,int(edgesList[i][j]))
+            n.add_edge(i,int(edgesList[i][j]))
     
-    return Network
+    return n
 
-def sendPackets(p,a,v):
-    print("Sending packets between router: " + str(a) + " and router: " + str(v))
+def sendPacket(rl,p,a,v):
+    #print("Sending packets between router: " + str(a) + " and router: " + str(v))
+
+    #Create packet
+    packet = Packet()
+
+    for router in p:
+        #print("Current router traffic: " + str(router))
+        packet = rl[router-1].packetMark(packet)
+
+    rl[v-1].packetBuffer.append(packet)
+    return packet
+
+
+def pathReconstruction(attackR,victimR,d):
+
+    packetsRecived = 0
+
+    reconstructionTree = [victimR]
+    
+    for packet in attackR.packetBuffer:
+        if packet.distance == 0:
+            reconstructionTree.append(tupleCreation(packet,victimR,False))
+        else:
+            reconstructionTree.append(tupleCreation(packet,victimR,True))
+        packetsRecived += 1
+    
+    #print(reconstructionTree)
+
+    for i in range(2,len(reconstructionTree)):
+        #print("The len of reconstruction tree is: " + str(len(reconstructionTree)))
+        #print("i: " + str(i))
+        #print(reconstructionTree[i-1])
+        if reconstructionTree[i-1][2] != d:
+            reconstructionTree.pop(i-1)
+        if i >= len(reconstructionTree):
+            break
+    
+    print("Nodes in reconstruction tree: " + str(len(reconstructionTree)))
+
+    
+        
+
+def tupleCreation(packet,v,flag):
+    tuple = []
+    if flag:
+        tuple.append(packet.start)
+        tuple.append(packet.end)
+        tuple.append(packet.distance)
+    else:
+        tuple.append(packet.start)
+        tuple.append(v)
+        tuple.append(0)
+    return tuple
+
     
     
 
@@ -149,6 +219,34 @@ routerList[attackerRouter-1].Attacker = True
 #Defining the path between the two 
 attackerVictimSP = nx.shortest_path(Network,source = attackerRouter,target = victimRouter)
 
+addedTraffic = 5
     
 for i in range(simLength):
-    sendPackets(attackerVictimSP,victimRouter,attackerRouter)
+
+    #Select 5 random routers to send from that are not the attacker or the victim
+    numRange = list(range(1,21))
+    #print("attackerR: " + str(attackerRouter) + " victim router: " + str(victimRouter))
+    numRange.remove(attackerRouter)
+    numRange.remove(victimRouter)
+    random.shuffle(numRange)
+
+    addedRouters = []
+
+    for i in range(addedTraffic):
+        addedRouters.append(numRange.pop())
+    
+    #Standard traffic
+    for i in range(len(addedRouters)):
+        standardTrafficSP = nx.shortest_path(Network,source = addedRouters[i],target = victimRouter)
+        sendPacket(routerList,standardTrafficSP,addedRouters[i],victimRouter)
+
+    #Attacker traffic
+    for i in range (x):
+        sendPacket(routerList,attackerVictimSP,victimRouter,attackerRouter)
+
+#print(routerList[victimRouter].packetBuffer)
+
+#for packet in routerList[victimRouter].packetBuffer:
+#    packet.pPrint()
+
+pathReconstruction(routerList[attackerRouter],routerList[victimRouter],len(attackerVictimSP))
